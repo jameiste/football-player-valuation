@@ -47,9 +47,9 @@ def player_stats_data()->pd.DataFrame:
         combined_player_stats = pd.DataFrame()
         count = 0
         for table_page, table_name in fbref_tables.items():
-            fbref_url = f"https://fbref.com/en/comps/{league_name["id"]}/{table_name["page"]}/{league_name["name"]}-Stats"
+            fbref_url = f'https://fbref.com/en/comps/{league_name["id"]}/{table_name["page"]}/{league_name["name"]}-Stats'
 
-            data = scrape_fbref(url=fbref_url, table_id=table_name["table_id"])
+            data = scrape_fbref(url=fbref_url, table_id=table_name["table_id"], use_cloudscraper_fallback=True)
             data = data.drop(columns=["Rk"]) 
             # Find column that contains '90s'
             column_90 = next((c for c in data.columns if "90s" in c), None)

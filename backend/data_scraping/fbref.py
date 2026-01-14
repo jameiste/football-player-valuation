@@ -45,6 +45,7 @@ from io import StringIO
 # Local imports
 from functions.logger import get_logger
 from functions.data_related import flatten_columns
+from environment.variable import OS_USAGE, OS_PROFILES
 
 
 # Logging (module-level)
@@ -72,11 +73,7 @@ def configure_logging(level: str | int = logging.INFO, log_file: str | None = No
 SESSION = requests.Session()
 # Browser-like headers to reduce blocks.
 HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/122.0.0.0 Safari/537.36"
-    ),
+    "User-Agent": (OS_PROFILES[OS_USAGE]["ua"]),
     "Accept": (
         "text/html,application/xhtml+xml,application/xml;"
         "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
@@ -159,7 +156,7 @@ def fetch_html_with_cloudscraper(url: str) -> str:
         log.warning("cloudscraper will use proxies from environment variables (requests-compatible)")
 
     scraper = cloudscraper.create_scraper(
-        browser={"browser": "chrome", "platform": "linux", "desktop": True}
+        browser={"browser": "chrome", "platform": OS_PROFILES[OS_USAGE]["cloudscraper_platform"], "desktop": True}
     )
     resp = scraper.get(url, headers=HEADERS, timeout=30, proxies=proxies)
     resp.raise_for_status()
@@ -179,7 +176,7 @@ def extract_tables(html: str) -> List[pd.DataFrame]:
 
     # Direct tables
     try:
-        direct = pd.read_html(html, flavor="lxml")
+        direct = pd.read_html(StringIO(html), flavor="lxml")
         tables.extend(direct)
         log.info("Direct tables found: %d", len(direct))
     except ValueError:
@@ -195,7 +192,7 @@ def extract_tables(html: str) -> List[pd.DataFrame]:
         if "<table" not in c_str:
             continue
         try:
-            dfs = pd.read_html(c_str, flavor="lxml")
+            dfs = pd.read_html(StringIO(c_str), flavor="lxml")
             tables.extend(dfs)
             commented_count += len(dfs)
         except ValueError:
