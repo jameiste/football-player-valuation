@@ -3,10 +3,12 @@
 # Imports 
 import pandas as pd
 import re
+from typing import Optional
 
 # Local imports
 from backend.data_scraping.fbref import scrape_fbref
-from functions.data_related import store_parquet, store_excel
+from backend.data_scraping.transfermarkt import scrape_transfermarkt
+from functions.data_related import load_excel, store_excel
 from functions.logger import get_logger
 from environment.variable import STATS_NAME
 
@@ -95,10 +97,83 @@ def player_stats_data()->pd.DataFrame:
         # Store the data as excel
         store_excel(data=combined_player_stats, name=STATS_NAME, sheet_name=league_name["name"])
     store_excel(data=overall_data, name=STATS_NAME, sheet_name="All")
-    return combined_player_stats
+    return overall_data
+
+# --- --- Transfermarkt --- ---
+# Parameters
+tm_leagues = {
+    "Premier-League": {"code": "GB1", "slug": "premier-league"},
+    "Bundesliga": {"code": "L1", "slug": "bundesliga"},
+    "La-Liga": {"code": "ES1", "slug": "laliga"},
+    "Serie-A": {"code": "IT1", "slug": "serie-a"},
+    "Ligue-1": {"code": "FR1", "slug": "ligue-1"},
+}
 
 
-# Function: Combine all dtaa
+# Function: Scrape the market values of the players
+def market_values_data(overall_data: Optional[pd.DataFrame], filter_mode: str = "players") -> pd.DataFrame:
+    tm_all = pd.DataFrame()
+    # Check if data is available otherwise read from function
+    overall_data = overall_data if overall_data is not None else load_excel(STATS_NAME, "All")
+    
+    
+    # Function: Find the ID of the team name
+    def find_club_id(club_name: str) -> str:
+        url = (
+            "https://www.transfermarkt.com/"
+            f"schnellsuche/ergebnis/schnellsuche?query={quote(club_name)}"
+        )
+
+        html = Scraper().fetch_html(url, referer="https://www.transfermarkt.com/")
+        soup = BeautifulSoup(html, "lxml")
+
+        # first club result
+        a = soup.select_one('a[href*="/startseite/verein/"]')
+        if not a:
+            raise ValueError(f"Club not found: {club_name}")
+
+        m = re.search(r"/verein/(\d+)", a["href"])
+        if not m:
+            raise ValueError(f"Club ID not found for: {club_name}")
+
+        return m.group(1)
+    
+    # Loop through leagues
+    for league_key, league_info in tm_leagues.items():
+        page = 1
+        # Proceed as long as True
+        while True:
+            tm_url = f'https://www.transfermarkt.com/{league_info["slug"]}/marktwerte/wettbewerb/{league_info["code"]}?page={page}'
+            logger.info("Transfermarkt: %s page=%d", league_key, page)
+
+            data = scrape_transfermarkt(url=tm_url, use_cloudscraper_fallback=True)
+            if data.empty:
+                break
+
+            data["League"] = league_key
+            # Check if data is already loaded
+            if tm_all.empty:
+                tm_all = data
+            else:
+                tm_all = pd.concat([tm_all, data], ignore_index=True)
+
+            page = page + 1
+
+    # Optional filtering using your FBref overall_df
+    if filter_mode == "players" and "Player" in overall_data.columns:
+        players = set(overall_data["Player"].dropna().astype(str).str.strip())
+        tm_all = tm_all[tm_all["Player"].fillna("").astype(str).str.strip().isin(players)]
+
+    if filter_mode == "teams" and "Squad" in overall_data.columns:
+        squads = set(overall_data["Squad"].dropna().astype(str).str.strip())
+        tm_all = tm_all[tm_all["Club"].fillna("").astype(str).str.strip().isin(squads)]
+        
+    # --- Store ---
+    store_excel(data=tm_all, name=STATS_NAME, sheet_name="Transfermarkt_Market_Values")
+
+    return tm_all
+
+# Function: Combine all data
 def data_table():
-    data_stats = player_stats_data()
-    return data_stats
+    # data_stats = player_stats_data()
+    market_values = market_values_data(None)

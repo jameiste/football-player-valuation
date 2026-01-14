@@ -5,11 +5,14 @@ import re
 from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
+
 # Local imports
 from environment.variable import DATA_PATH
 from functions.logger import get_logger
+
 # Logger
 logger = get_logger(__name__)
+
 # Function: Combin multiple indices 
 def flatten_columns(df):
     """
@@ -78,6 +81,20 @@ def store_excel(data: pd.DataFrame, name: str, sheet_name: str | None = None):
     append_msg = f" (append: {sheet_name})" if sheet_name else ""
     logger.info(f"DataFrame is uploaded to: {name}{append_msg}")
 
+# Function: Load excel / sheet
+def load_excel(name: str, sheet_name: str | None = None) -> pd.DataFrame:
+    excel_path = Path(DATA_PATH, f"{name}.xlsx")
+
+    try:
+        return pd.read_excel(
+            excel_path,
+            sheet_name=sheet_name,
+            engine="openpyxl",
+        )
+    except FileNotFoundError:
+        logger.error(f"Excel file not found: {name}.xlsx")
+        raise
+
 
 # Function: Store data as a parquet 
 def store_parquet(data: pd.DataFrame, name: str):
@@ -115,3 +132,32 @@ def numeric_columns(data: pd.DataFrame) -> pd.DataFrame:
                 data[col] = data[col].astype(float)
 
     return data
+
+# Function: Adapt market values
+def numeric_values_adaption(value_str: str) -> float | None:
+    if value_str is None:
+        return None
+
+    s = str(value_str).strip()
+    if not s or s in {"-", "—"}:
+        return None
+
+    # Normalize German formats
+    s = s.replace("Mio.", "m").replace("Tsd.", "k")
+    s = s.replace(".", "").replace(",", ".")  # 110,00 -> 110.00
+
+    # Remove currency and spaces
+    s = s.replace("€", "").replace(" ", "").lower()
+
+    m = re.search(r"([0-9]+(?:\.[0-9]+)?)(m|k)?", s)
+    if not m:
+        return None
+
+    num = float(m.group(1))
+    unit = m.group(2)
+
+    if unit == "m":
+        return num * 1_000_000
+    if unit == "k":
+        return num * 1_000
+    return num
