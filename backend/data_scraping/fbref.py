@@ -10,16 +10,16 @@ No pattern scraping.
 """
 
 from __future__ import annotations
-
 import re
 from io import StringIO
-from typing import Optional
-
 import pandas as pd
 from bs4 import BeautifulSoup, Comment
 
+# Local imports
 from functions.data_related import flatten_columns
+from functions.utils import find_country
 from classes.scraping import Scraper
+
 
 # Function: Scrape the data from fbref
 def scrape_fbref(
@@ -38,14 +38,19 @@ def scrape_fbref(
             raise
 
     soup = BeautifulSoup(html, "lxml")
+    
+    # Function: Extract the table
+    def parse_table(table_html: str) -> pd.DataFrame:
+        df = pd.read_html(StringIO(table_html), flavor="lxml")[0]
+        # Resolve Nation problem
+        if "Nation" in df.columns:
+            df["Nation"] = df["Nation"].astype(str).str.split().str[-1]
+        return flatten_columns(df)
 
     # Normal DOM
     t = soup.find("table", id=table_id)
     if t is not None:
-        df = pd.read_html(StringIO(str(t)), flavor="lxml")[0]
-        if "Player" in df.columns:
-            df = df[df["Player"] != "Player"]
-        return flatten_columns(df)
+        return parse_table(str(t))
 
     # Commented tables
     for c in soup.find_all(string=lambda x: isinstance(x, Comment)):
@@ -58,14 +63,8 @@ def scrape_fbref(
             c_str,
         )
         if m:
-            df = pd.read_html(StringIO(m.group(1)), flavor="lxml")[0]
-            if "Player" in df.columns:
-                df = df[df["Player"] != "Player"]
-            return flatten_columns(df)
+            return parse_table(m.group(1))
 
-        df = pd.read_html(StringIO(c_str), flavor="lxml")[0]
-        if "Player" in df.columns:
-            df = df[df["Player"] != "Player"]
-        return flatten_columns(df)
+        return parse_table(c_str)
 
     raise ValueError(f"Table id '{table_id}' not found on page: {url}")

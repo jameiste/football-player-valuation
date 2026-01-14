@@ -42,3 +42,36 @@ OS_USAGE = detect_os_profile(OS_OVERRIDE)
 
 # Table names
 STATS_NAME = "Player_Stats"
+POSITION_MAP = {
+    # Goalkeeper
+    "Goalkeeper": "GK",
+
+    # Defenders
+    "Centre-Back": "CB",
+    "Left-Back": "LB",
+    "Right-Back": "RB",
+    "Defender": "DF",
+
+    # Wing-backs (sometimes shown separately)
+    "Left Wing-Back": "LWB",
+    "Right Wing-Back": "RWB",
+
+    # Defensive / Central Midfield
+    "Defensive Midfield": "DM",
+    "Central Midfield": "CM",
+    "Midfield": "MF",
+
+    # Attacking Midfield
+    "Attacking Midfield": "AM",
+
+    # Wide Midfield / Wingers
+    "Left Midfield": "LM",
+    "Right Midfield": "RM",
+    "Left Winger": "LW",
+    "Right Winger": "RW",
+
+    # Forwards
+    "Centre-Forward": "ST",
+    "Second Striker": "SS",
+    "Forward": "FW",
+}

@@ -11,15 +11,58 @@ import re
 from typing import Optional
 import pandas as pd
 from bs4 import BeautifulSoup
+from urllib.parse import quote
 
 # Local imports
 from classes.scraping import Scraper
 from functions.data_related import numeric_values_adaption 
+from environment.variable import POSITION_MAP
 
+# Function: Teams in the league
+def teams_in_league(league: str, competition: str, season_id: int) -> pd.DataFrame:
+    url = f'https://www.transfermarkt.com/{league}/startseite/wettbewerb/{competition}/saison_id/{season_id}/plus/1'
+    html = Scraper().fetch_html(url, referer="https://www.transfermarkt.com/")
+    soup = BeautifulSoup(html, "lxml")
+
+    rows, seen = [], set()
+    for a in soup.select('a[title][href*="/startseite/verein/"]'):
+        href = a.get("href", "")
+        m = re.search(r"^/([^/]+)/startseite/verein/(\d+)/saison_id/(\d+)", href)
+        if not m:
+            continue
+        slug, club_id, sid = m.group(1), m.group(2), int(m.group(3))
+        key = (club_id, sid)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({"Club": a["title"], "Slug": slug, "ID": club_id})
+
+    return pd.DataFrame(rows)
+# Function: Find the ID of the team name
+# def find_club_id(club_name: str) -> str:
+#     url = (
+#         "https://www.transfermarkt.com/"
+#         f"schnellsuche/ergebnis/schnellsuche?query={quote(club_name)}"
+#     )
+
+#     html = Scraper().fetch_html(url, referer="https://www.transfermarkt.com/")
+#     soup = BeautifulSoup(html, "lxml")
+
+#     # first club result
+#     a = soup.select_one('a[href*="/startseite/verein/"]')
+#     if not a:
+#         raise ValueError(f"Club not found: {club_name}")
+
+#     m = re.search(r"/verein/(\d+)", a["href"])
+#     if not m:
+#         raise ValueError(f"Club ID not found for: {club_name}")
+
+#     return m.group(1)
 
 # Function: Scrape the data from transfermarkt 
 def scrape_transfermarkt(
     url: str,
+    club:str,
     use_cloudscraper_fallback: bool = False,
 ) -> pd.DataFrame:
     s = Scraper()
@@ -52,11 +95,20 @@ def scrape_transfermarkt(
             m_id = re.search(r"/spieler/(\d+)", player_href)
             if m_id:
                 player_id = m_id.group(1)
+        
+        # Nation
+        nations = [img.get("title") for img in tr.select("td.zentriert img.flaggenrahmen") if img.get("title")]
+        nation = nations[0] if nations else None  
 
-        # Club name (often as title on a centered link/img)
-        a_club = tr.select_one("td.zentriert a[title]")
-        club_name = a_club.get("title") if a_club else None
-
+        # Age
+        age_td = tr.select_one("td.zentriert:not(.rueckennummer)")
+        age = int(re.search(r"\((\d+)\)", age_td.get_text(strip=True))[1])
+        
+        # Position 
+        position_td = tr.select_one("td.posrela table.inline-table tr:last-child td").get_text(strip=True)
+        position = POSITION_MAP[position_td] if position_td else None
+        
+        
         # Market value (usually right aligned main link)
         mv_td = tr.select_one("td.rechts.hauptlink")
         mv_text = mv_td.get_text(strip=True) if mv_td else None
@@ -68,8 +120,11 @@ def scrape_transfermarkt(
         rows.append(
             {
                 "Player": player_name,
-                "TM_Player_ID": player_id,
-                "Club": club_name,
+                "Age": age,
+                "Nation": nation,
+                "Position": position,
+                "Player_ID": player_id,
+                "Club": club,
                 "Market_Value_Text": mv_text,
                 "Market_Value_EUR": mv_eur,
                 "TM_URL": ("https://www.transfermarkt.com" + player_href) if player_href else None,
