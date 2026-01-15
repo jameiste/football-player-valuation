@@ -97,7 +97,7 @@ def player_stats_data(update_sheets: list)->pd.DataFrame:
             count = count + 1
         # Map the correct entries 
         combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Player", target="Pos")  
-        combined_player_stats = add_date_column(length=combined_player_stats.shape[0])
+        combined_player_stats["Date"] = add_date_column(length=combined_player_stats.shape[0])
         # Concat data          
         if overall_data.empty:
             overall_data = combined_player_stats
@@ -107,7 +107,7 @@ def player_stats_data(update_sheets: list)->pd.DataFrame:
         store_excel(data=combined_player_stats, name=STATS_NAME, sheet_name=league_name["name"])
     if "All" in update_sheets:
         store_excel(data=overall_data, name=STATS_NAME, sheet_name="All")
-        
+
     return overall_data
 
 # --- --- Transfermarkt --- ---
