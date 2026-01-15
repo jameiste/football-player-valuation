@@ -148,3 +148,8 @@ def get_best_match(name: str, choices: list) -> str | None:
         return match[0]
     return None
 
+# Function: Filter Data by certain columns and entries
+def filter_data_set(data: pd.DataFrame, columns: list, filter_entries: list) -> pd.DataFrame:
+    # Check if columns is  a list
+    if not isinstance(columns, list):
+        columns = list(columns)

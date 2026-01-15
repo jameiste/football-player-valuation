@@ -1,14 +1,11 @@
 ### Read data from FBREF ##
+"""
+Scrape statistic of all Players out of the top 5-Leagues
+fbref is the foundation of that
+Put all information in dataframes
+"""
 
 # Imports 
-# fbref.py
-"""
-FBref-specific parsing ONLY.
-
-Uses Scraper (universal) for fetching.
-No pattern scraping.
-"""
-
 from __future__ import annotations
 import re
 from io import StringIO
