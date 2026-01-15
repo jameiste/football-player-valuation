@@ -41,6 +41,8 @@ OS_PROFILES = {
 OS_USAGE = detect_os_profile(OS_OVERRIDE)
 
 # Table names
+MARKET_SHEET_NAME = "Transfermarkt_Market_Values"
+SHEETS = ["Premier-League", "Bundesliga", "La-Liga", "Serie-A", "Ligue-1", "All", MARKET_SHEET_NAME]
 STATS_NAME = "Player_Stats"
 POSITION_MAP = {
     # Goalkeeper

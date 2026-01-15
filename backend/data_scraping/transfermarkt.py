@@ -79,17 +79,17 @@ def scrape_transfermarkt(
 
     table = soup.find("table", class_="items")
     if table is None:
-        # no table -> empty page (end of pagination or blocked)
+        # no table -> empty page 
         return pd.DataFrame()
 
     rows = []
     for tr in table.find_all("tr", class_=lambda c: c in {"odd", "even"} if c else False):
-        # Player link (usually first td.hauptlink a)
+        # Player link
         a_player = tr.select_one("td.hauptlink a")
         player_name = a_player.get_text(strip=True) if a_player else None
         player_href = a_player.get("href") if a_player else None
 
-        # Player ID from URL (/profil/spieler/<id>)
+        # Player ID from URL 
         player_id = None
         if player_href:
             m_id = re.search(r"/spieler/(\d+)", player_href)
@@ -122,7 +122,7 @@ def scrape_transfermarkt(
                 "Player": player_name,
                 "Age": age,
                 "Nation": nation,
-                "Position": position,
+                "Pos": position,
                 "Player_ID": player_id,
                 "Club": club,
                 "Market_Value_Text": mv_text,

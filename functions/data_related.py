@@ -2,9 +2,11 @@
 # Imports
 import pandas as pd
 import re
+from datetime import datetime
 
 # Local imports
 from functions.logger import get_logger
+from functions.utils import load_excel, get_best_match
 
 # Logger
 logger = get_logger(__name__)
@@ -65,7 +67,7 @@ def numeric_columns(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 # Function: Adapt market values
-def numeric_values_adaption(value_str: str) -> float | None:
+def numeric_values_adaption(value_str: str) -> int | None:
     if value_str is None:
         return None
 
@@ -75,7 +77,7 @@ def numeric_values_adaption(value_str: str) -> float | None:
 
     # Normalize German formats
     s = s.replace("Mio.", "m").replace("Tsd.", "k")
-    s = s.replace(".", "").replace(",", ".")  # 110,00 -> 110.00
+    s = s.replace(".", "").replace(",", ".") 
 
     # Remove currency and spaces
     s = s.replace("€", "").replace(" ", "").lower()
@@ -92,3 +94,28 @@ def numeric_values_adaption(value_str: str) -> float | None:
     if unit == "k":
         return num * 1_000
     return num
+
+# Function: Map Players to their correct position (based) on transfermarkt
+def mapping_two_columns(initial_data: pd.DataFrame, reference_data: pd.DataFrame, column: str, target: str) -> pd.DataFrame:
+    # Set a mapping between the two columns
+    unique_reference = reference_data.drop_duplicates(subset=column)
+    # Get rid off weird letters
+    # initial_data[column] = initial_data[column].apply(lambda x: "".join(c for c in unicodedata.normalize('NFD', x) if not unicodedata.combining(c)))
+    missing = initial_data[column].unique()
+    choices = unique_reference[column].tolist()
+
+    # Create and apply mappings
+    name_map = {name: get_best_match(name, choices) for name in missing}
+    mapping = unique_reference.set_index(column)[target]
+    initial_data[column] = initial_data[column].map(name_map)
+    initial_data[target] = initial_data[column].map(mapping)
+
+
+    return initial_data
+
+# Function: Add a column that adds the scrapped date
+def add_date_column(length: int) -> pd.Series:
+    date = pd.Timestamp.now().normalize()
+    date_series = pd.Series([date], dtype="datetime64[ns]")
+
+    return date_series.repeat(length).reset_index(drop=True)

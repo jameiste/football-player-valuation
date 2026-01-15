@@ -9,14 +9,15 @@ from typing import Optional
 from backend.data_scraping.fbref import scrape_fbref
 from backend.data_scraping.transfermarkt import scrape_transfermarkt, teams_in_league
 from functions.logger import get_logger
-from functions.utils import find_country, load_excel, store_excel
-from environment.variable import STATS_NAME
+from functions.data_related import mapping_two_columns, add_date_column
+from functions.utils import find_country, load_excel, store_excel, update_sheets
+from environment.variable import STATS_NAME, MARKET_SHEET_NAME, SHEETS, DATA_PATH
 
 # Logger
 logger = get_logger(__name__)
 
 # --- --- FBREF --- ---
-# Leagues 
+# Leagues TODO: Should be scraped as well
 fbref_leagues = {
     "Premier-League": {"id": 9, "name": "Premier-League"},
     "Bundesliga": {"id": 20, "name": "Bundesliga"},
@@ -24,7 +25,7 @@ fbref_leagues = {
     "Serie-A": {"id": 11, "name": "Serie-A"},
     "Ligue-1": {"id": 13, "name": "Ligue-1"},
 }
-
+# Tables
 fbref_tables = {
     # Core
     "stats_standard": {"page": "stats", "table_id": "stats_standard"},
@@ -42,10 +43,14 @@ fbref_tables = {
     "stats_keeper_adv": {"page": "keepersadv", "table_id": "stats_keeper_adv"},
 }
 
-# Function: 
-def player_stats_data()->pd.DataFrame:
+# Function: Scrape player data from fbref
+def player_stats_data(update_sheets: list)->pd.DataFrame:
+    # Load and initialize data
+    tm_data = load_excel(name=STATS_NAME, sheet_name=MARKET_SHEET_NAME)
     overall_data = pd.DataFrame()
-    for league_id, league_name in fbref_leagues.items():
+    update_leagues = {sheet: fbref_leagues[sheet] for sheet in update_sheets if sheet != "All"}
+    # Loop through all leagues
+    for league_id, league_name in update_leagues.items():
         combined_player_stats = pd.DataFrame()
         count = 0
         for table_page, table_name in fbref_tables.items():
@@ -90,13 +95,19 @@ def player_stats_data()->pd.DataFrame:
                 )
                
             count = count + 1
+        # Map the correct entries 
+        combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Player", target="Pos")  
+        combined_player_stats = add_date_column(length=combined_player_stats.shape[0])
+        # Concat data          
         if overall_data.empty:
             overall_data = combined_player_stats
         else:
             overall_data = pd.concat([overall_data, combined_player_stats], ignore_index=True)
         # Store the data as excel
         store_excel(data=combined_player_stats, name=STATS_NAME, sheet_name=league_name["name"])
-    store_excel(data=overall_data, name=STATS_NAME, sheet_name="All")
+    if "All" in update_sheets:
+        store_excel(data=overall_data, name=STATS_NAME, sheet_name="All")
+        
     return overall_data
 
 # --- --- Transfermarkt --- ---
@@ -109,13 +120,11 @@ tm_leagues = {
     "Ligue-1": {"code": "FR1", "slug": "ligue-1"},
 }
 
-
 # Function: Scrape the market values of the players
-def market_values_data(overall_data: Optional[pd.DataFrame], filter_mode: str = "players") -> pd.DataFrame:
+def market_values_data() -> pd.DataFrame:
     tm_all = pd.DataFrame()
-    # Check if data is available otherwise read from function
-    overall_data = overall_data if overall_data is not None else load_excel(STATS_NAME, "All")
-    # all_clubs = overall_data.Squad.unique()
+    
+    # Determine all clubs
     all_clubs = pd.DataFrame()
     for leagues in tm_leagues.keys():
         code = tm_leagues[leagues]["code"]
@@ -125,7 +134,6 @@ def market_values_data(overall_data: Optional[pd.DataFrame], filter_mode: str = 
         else:
             all_clubs = pd.concat([all_clubs, clubs], ignore_index=True)
         
-    
     # Loop through all clubs
     for i, club in all_clubs.iterrows():
         # club_id = find_club_id(club_name=club["club"])
@@ -143,21 +151,21 @@ def market_values_data(overall_data: Optional[pd.DataFrame], filter_mode: str = 
 
     # Short form of countries
     tm_all["Nation"] = find_country(countries=tm_all.Nation, alpha=3)
-    # Optional filtering using your FBref overall_df
-    # if filter_mode == "players" and "Player" in overall_data.columns:
-    #     players = set(overall_data["Player"].dropna().astype(str).str.strip())
-    #     tm_all = tm_all[tm_all["Player"].fillna("").astype(str).str.strip().isin(players)]
+    tm_all["Date"] = add_date_column(length=tm_all.shape[0])
 
-    # if filter_mode == "teams" and "Squad" in overall_data.columns:
-    #     squads = set(overall_data["Squad"].dropna().astype(str).str.strip())
-    #     tm_all = tm_all[tm_all["Club"].fillna("").astype(str).str.strip().isin(squads)]
-        
     # --- Store ---
-    store_excel(data=tm_all, name=STATS_NAME, sheet_name="Transfermarkt_Market_Values")
+    store_excel(data=tm_all, name=STATS_NAME, sheet_name=MARKET_SHEET_NAME)
 
     return tm_all
 
 # Function: Combine all data
 def data_table():
-    data_stats = player_stats_data()
-    market_values = market_values_data(None)
+    # Determine updates
+    update_list = update_sheets()
+    fbref_list = [sheet for sheet in update_list if sheet != MARKET_SHEET_NAME]
+    # Run the scraping
+    if MARKET_SHEET_NAME in update_list:
+        market_values = market_values_data()
+    if len(fbref_list) > 0:
+        data_stats = player_stats_data(fbref_list)
+    

@@ -42,12 +42,13 @@ def scrape_fbref(
     # Function: Extract the table
     def parse_table(table_html: str) -> pd.DataFrame:
         df = pd.read_html(StringIO(table_html), flavor="lxml")[0]
+        df = flatten_columns(df)
         # Resolve Nation problem
         if "Nation" in df.columns:
             df["Nation"] = df["Nation"].astype(str).str.split().str[-1]
-        return flatten_columns(df)
+        return df
 
-    # Normal DOM
+    # Normal  
     t = soup.find("table", id=table_id)
     if t is not None:
         return parse_table(str(t))
