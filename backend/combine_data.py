@@ -9,9 +9,9 @@ from typing import Optional
 from backend.data_scraping.fbref import scrape_fbref
 from backend.data_scraping.transfermarkt import scrape_transfermarkt, teams_in_league
 from functions.logger import get_logger
-from functions.data_related import mapping_two_columns, add_date_column
+from functions.data_related import mapping_two_columns, add_date_column, normalize_data
 from functions.utils import find_country, load_excel, store_excel, update_sheets
-from environment.variable import STATS_NAME, MARKET_SHEET_NAME, SHEETS, DATA_PATH
+from environment.variable import STATS_NAME, MARKET_SHEET_NAME, SHEETS, DATA_PATH, POSITION_GROUPS, NON_FEATURES
 
 # Logger
 logger = get_logger(__name__)
@@ -58,11 +58,7 @@ def player_stats_data(update_sheets: list)->pd.DataFrame:
 
             data = scrape_fbref(url=fbref_url, table_id=table_name["table_id"], use_cloudscraper_fallback=True)
             data = data.drop(columns=["Rk"]) 
-            # Find column that contains '90s'
-            column_90 = next((c for c in data.columns if "90s" in c), None)
-            if column_90 is not None:
-                min_ratio_90 = data[column_90].astype(float).max() * 0.2
-                data = data[data[column_90] > min_ratio_90]
+
             # Add League and Table name
             data["League"] = re.sub(r'[+\- ]', '_', league_name["name"])
             data["Table"] = re.sub(r'[+\- ]', '_', table_page)
@@ -95,9 +91,17 @@ def player_stats_data(update_sheets: list)->pd.DataFrame:
                 )
                
             count = count + 1
+        # Take the top 70% in play time
+        min_ratio_90 = combined_player_stats['Playing_Time.90s'].astype(float).quantile(0.3)
+        combined_player_stats = combined_player_stats[combined_player_stats['Playing_Time.90s'] > min_ratio_90]
         # Map the correct entries 
-        combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Player", target="Pos")  
+        combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Player", target="Pos") 
+        combined_player_stats["Pos_group"] =  combined_player_stats["Pos"].map(POSITION_GROUPS)
         combined_player_stats["Date"] = add_date_column(length=combined_player_stats.shape[0])
+
+        # Normalize data 
+        features = [column for column in combined_player_stats.columns if column not in NON_FEATURES]
+        combined_player_stats = normalize_data(data = combined_player_stats, features=features)
         # Concat data          
         if overall_data.empty:
             overall_data = combined_player_stats
@@ -161,7 +165,7 @@ def market_values_data() -> pd.DataFrame:
 # Function: Combine all data
 def data_table():
     # Determine updates
-    update_list = update_sheets()
+    update_list = update_sheets(offset_date=30)
     fbref_list = [sheet for sheet in update_list if sheet != MARKET_SHEET_NAME]
     # Run the scraping
     if MARKET_SHEET_NAME in update_list:

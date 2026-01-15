@@ -113,7 +113,7 @@ def date_update_check(date: pd.Timestamp, offset_days: int = 30) -> bool:
         return False
 
 # Function: Determine which sheets needs to be updated:
-def update_sheets() -> list:
+def update_sheets(offset_date: int) -> list:
     # Check if the data already exists
     data_path = Path(DATA_PATH, f"{STATS_NAME}.xlsx")
     update_sheets = SHEETS.copy()
@@ -131,7 +131,7 @@ def update_sheets() -> list:
             else:
                 continue
 
-            if not date_update_check(date=temp_date, offset_days=30):
+            if not date_update_check(date=temp_date, offset_days=offset_date):
                 update_sheets.remove(sheet)
     if len(update_sheets) > 0:
         logger.info("Following sheets need to be updated:", update_sheets)

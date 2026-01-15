@@ -1,12 +1,14 @@
 ### Function for data manipulation ###
 # Imports
 import pandas as pd
+import numpy as np
 import re
 from datetime import datetime
 
 # Local imports
 from functions.logger import get_logger
 from functions.utils import load_excel, get_best_match
+from environment.variable import NON_FEATURES
 
 # Logger
 logger = get_logger(__name__)
@@ -119,3 +121,48 @@ def add_date_column(length: int) -> pd.Series:
     date_series = pd.Series([date], dtype="datetime64[ns]")
 
     return date_series.repeat(length).reset_index(drop=True)
+
+# Function: Normalize data by various rules
+def normalize_data(data: pd.DataFrame, features: list) -> pd.DataFrame:
+    # Go through all features
+    for i, feature in enumerate(features):
+        # Check varios cases
+        if ("Per_90" in feature) or ("/90" in feature) or ("90s" in feature) or ("%" in feature) or ("Playing_time" in feature):
+            continue
+        else:
+            data[feature] = data[feature].astype(float) / data['Playing_Time.90s']
+
+    return data
+
+# Function: Standardize data (fixed, select only needed columns)
+def standardize_data(data: pd.DataFrame, columns_interest: list, grouping: list, column: str) -> pd.DataFrame:
+    # Ensure inputs are lists
+    if not isinstance(columns_interest, list):
+        columns_interest = list(columns_interest)
+    if not isinstance(grouping, list):
+        grouping = list(grouping)
+
+    overall_data = pd.DataFrame()
+
+    for i, group in enumerate(grouping):
+        # Select columns of interest and not more
+        temp_data = data.loc[data[column] == group, NON_FEATURES + columns_interest].copy()
+
+        # Standardize all columns
+        for col in columns_interest:
+            mean = temp_data[col].astype(float).mean()
+            std = temp_data[col].astype(float).std()
+            temp_data[col] = (temp_data[col].astype(float) - mean) / std
+
+        # Rename columns once for this group
+        temp_data.rename(columns={col: f"{column}.{col}" for col in columns_interest}, inplace=True)
+
+        # Concat group data
+        if i == 0:
+            overall_data = temp_data
+        else:
+            overall_data = pd.concat([overall_data, temp_data], axis=0)
+
+    # Reset index
+    overall_data.reset_index(drop=True, inplace=True)
+    return overall_data
