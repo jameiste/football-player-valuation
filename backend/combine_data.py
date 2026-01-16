@@ -95,7 +95,10 @@ def player_stats_data(update_sheets: list)->pd.DataFrame:
         min_ratio_90 = combined_player_stats['Playing_Time.90s'].astype(float).quantile(0.3)
         combined_player_stats = combined_player_stats[combined_player_stats['Playing_Time.90s'] > min_ratio_90]
         # Map the correct entries 
-        combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Player", target="Pos") 
+        combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Player", target="Pos")
+        combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Club", target="League_Position")
+        combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Club", target="Goal_Diff_%")
+        combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Club", target="Points_%")
         combined_player_stats["Pos_group"] =  combined_player_stats["Pos"].map(POSITION_GROUPS)
         combined_player_stats["Date"] = add_date_column(length=combined_player_stats.shape[0])
 
@@ -137,16 +140,18 @@ def market_values_data() -> pd.DataFrame:
             all_clubs = clubs
         else:
             all_clubs = pd.concat([all_clubs, clubs], ignore_index=True)
-        
+    # Mapping for multiple infos
+    goal_map = dict(zip(all_clubs["Club"], all_clubs["GoalDiff_%"]))
+    points_map = dict(zip(all_clubs["Club"], all_clubs["Points_%"]))
+    position_map = dict(zip(all_clubs["Club"], all_clubs["League_Position"]))
+    all_maps = {"Goal_Diff_%": goal_map, "Points_%": points_map, "League_Position": position_map}
     # Loop through all clubs
     for i, club in all_clubs.iterrows():
         # club_id = find_club_id(club_name=club["club"])
         tm_url = f'https://www.transfermarkt.com/{club["Slug"]}/startseite/verein/{club["ID"]}'
         logger.info("Transfermarkt: %s", club["Club"])
         data = scrape_transfermarkt(url=tm_url, club=club["Club"], use_cloudscraper_fallback=True)
-        
-        # Add League to data
-        # data["League"] = overall_data[overall_data.Squad == club].loc["League"]
+
         # Check if data is already loaded
         if i == 0:
             tm_all = data
@@ -156,6 +161,9 @@ def market_values_data() -> pd.DataFrame:
     # Short form of countries
     tm_all["Nation"] = find_country(countries=tm_all.Nation, alpha=3)
     tm_all["Date"] = add_date_column(length=tm_all.shape[0])
+    # Map team info
+    for column, mapping in all_maps.items():
+        tm_all[column] = tm_all["Club"].map(mapping)
 
     # --- Store ---
     store_excel(data=tm_all, name=STATS_NAME, sheet_name=MARKET_SHEET_NAME)
@@ -165,7 +173,7 @@ def market_values_data() -> pd.DataFrame:
 # Function: Combine all data
 def data_table():
     # Determine updates
-    update_list = update_sheets(offset_date=30)
+    update_list = update_sheets(offset_date=0)
     fbref_list = [sheet for sheet in update_list if sheet != MARKET_SHEET_NAME]
     # Run the scraping
     if MARKET_SHEET_NAME in update_list:

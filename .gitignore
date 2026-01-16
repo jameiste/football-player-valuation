@@ -170,3 +170,4 @@ __marimo__/
 *.xlsx
 *.parquet
 .vscode/settings.json
+.~*

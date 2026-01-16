@@ -20,44 +20,39 @@ from environment.variable import POSITION_MAP
 
 # Function: Teams in the league
 def teams_in_league(league: str, competition: str, season_id: int) -> pd.DataFrame:
-    url = f'https://www.transfermarkt.com/{league}/startseite/wettbewerb/{competition}/saison_id/{season_id}/plus/1'
+    url = f"https://www.transfermarkt.com/{league}/startseite/wettbewerb/{competition}/saison_id/{season_id}"
     html = Scraper().fetch_html(url, referer="https://www.transfermarkt.com/")
     soup = BeautifulSoup(html, "lxml")
+    # Extract table 
+    table = soup.select_one("div#yw2 table.items")
+    rows = []
 
-    rows, seen = [], set()
-    for a in soup.select('a[title][href*="/startseite/verein/"]'):
-        href = a.get("href", "")
-        m = re.search(r"^/([^/]+)/startseite/verein/(\d+)/saison_id/(\d+)", href)
+    for tr in table.select("tbody tr"):
+        tds = tr.select("td")
+        if len(tds) < 6:
+            continue
+
+        club_a = tds[1].select_one('a[href*="/verein/"]')
+        if not club_a:
+            continue
+
+        m = re.search(r"/([^/]+)/(?:startseite|spielplan)/verein/(\d+)", club_a["href"])
         if not m:
             continue
-        slug, club_id, sid = m.group(1), m.group(2), int(m.group(3))
-        key = (club_id, sid)
-        if key in seen:
-            continue
-        seen.add(key)
-        rows.append({"Club": a["title"], "Slug": slug, "ID": club_id})
+
+        rows.append({
+            "League_Position": int(tds[0].get_text(strip=True)),
+            "Club": club_a["title"],
+            "Slug": m.group(1),
+            "ID": int(m.group(2)),
+            "Matches": int(tds[3].get_text(strip=True)),
+            "GoalDiff_%": int(tds[4].get_text(strip=True).replace("+", "")) / int(tds[3].get_text(strip=True)),
+            "Points_%": int(tds[5].get_text(strip=True)) / int(tds[3].get_text(strip=True)),
+        })
 
     return pd.DataFrame(rows)
 # Function: Find the ID of the team name
-# def find_club_id(club_name: str) -> str:
-#     url = (
-#         "https://www.transfermarkt.com/"
-#         f"schnellsuche/ergebnis/schnellsuche?query={quote(club_name)}"
-#     )
-
-#     html = Scraper().fetch_html(url, referer="https://www.transfermarkt.com/")
-#     soup = BeautifulSoup(html, "lxml")
-
-#     # first club result
-#     a = soup.select_one('a[href*="/startseite/verein/"]')
-#     if not a:
-#         raise ValueError(f"Club not found: {club_name}")
-
-#     m = re.search(r"/verein/(\d+)", a["href"])
-#     if not m:
-#         raise ValueError(f"Club ID not found for: {club_name}")
-
-#     return m.group(1)
+# def table_with_league()
 
 # Function: Scrape the data from transfermarkt 
 def scrape_transfermarkt(
@@ -68,12 +63,11 @@ def scrape_transfermarkt(
     s = Scraper()
 
     try:
-        html = s.fetch_html(url, referer="https://www.transfermarkt.com/")
-    except Exception:
-        if use_cloudscraper_fallback:
-            html = s.fetch_html_with_cloudscraper(url, referer="https://www.transfermarkt.com/")
-        else:
-            raise
+        # Use the 'impersonate' method directly as it handles the 403 and the timing
+        html = s.fetch_html(url, referer="https://fbref.com/")
+    except Exception as e:
+        logger.error(f"Critical failure fetching {url}: {e}")
+        raise 
 
     soup = BeautifulSoup(html, "lxml")
 

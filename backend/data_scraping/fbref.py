@@ -27,12 +27,11 @@ def scrape_fbref(
     s = Scraper()
 
     try:
+        # Use the 'impersonate' method directly as it handles the 403 and the timing
         html = s.fetch_html(url, referer="https://fbref.com/")
-    except Exception:
-        if use_cloudscraper_fallback:
-            html = s.fetch_html_with_cloudscraper(url, referer="https://fbref.com/")
-        else:
-            raise
+    except Exception as e:
+        logger.error(f"Critical failure fetching {url}: {e}")
+        raise 
 
     soup = BeautifulSoup(html, "lxml")
     

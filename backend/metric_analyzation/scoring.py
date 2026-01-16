@@ -62,6 +62,6 @@ def prepare_scoring():
 
 # Function: Run the model prediction
 def run_scoring():
-    if update_sheets(offset_date=30):
+    if update_sheets(offset_date=-1):
         prepare_scoring()
     return None

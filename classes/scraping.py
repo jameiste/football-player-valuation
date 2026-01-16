@@ -1,21 +1,15 @@
 ### Scraper for website info ### 
 
 # Imports
-from __future__ import annotations
-
-import os
 import time
 import random
 from typing import Optional
-
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+from curl_cffi import requests as cur_requests 
 
 from functions.logger import get_logger
 from environment.variable import OS_USAGE, OS_PROFILES
 
-
+# Class: Scraping
 class Scraper:
     logger = get_logger(__name__)
 
@@ -29,110 +23,78 @@ class Scraper:
         self.timeout = timeout
         self.max_tries_429 = max_tries_429
         self.base_backoff_s = base_backoff_s
-
-        self.session = requests.Session()
-
-        retry = Retry(
-            total=3,
-            backoff_factor=0,
-            status_forcelist=[500, 502, 503, 504],
-            allowed_methods=["GET"],
-        )
-        self.session.mount("https://", HTTPAdapter(max_retries=retry))
-        self.session.mount("http://", HTTPAdapter(max_retries=retry))
-
+        
+        # --- MISSING ATTRIBUTES ADDED HERE ---
+        self.last_request_time = 0.0
+        self.min_delay = 3.1 
+        
         if headers is None:
             self.headers = {
                 "User-Agent": OS_PROFILES[OS_USAGE]["ua"],
-                "Accept": (
-                    "text/html,application/xhtml+xml,application/xml;"
-                    "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
-                ),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
                 "Connection": "keep-alive",
                 "Upgrade-Insecure-Requests": "1",
-                "DNT": "1",
             }
         else:
             self.headers = headers
 
     def _env_proxies(self) -> Optional[dict]:
+        import os
         http_p = os.getenv("HTTP_PROXY")
         https_p = os.getenv("HTTPS_PROXY")
-        if not http_p and not https_p:
-            return None
-        return {"http": http_p, "https": https_p}
+        return {"http": http_p, "https": https_p} if http_p or https_p else None
+
+    def _smart_delay(self):
+        """Ensures at least 3.1s + small jitter between calls."""
+        elapsed = time.time() - self.last_request_time
+        # Add a tiny bit of random jitter to the base delay
+        required_gap = self.min_delay + random.uniform(0, 1.0)
+        
+        if elapsed < required_gap:
+            wait_time = required_gap - elapsed
+            self.logger.info(f"Throttling for {wait_time:.2f}s to respect FBRef rules")
+            time.sleep(wait_time)
+        
+        self.last_request_time = time.time()
 
     def fetch_html(self, url: str, referer: Optional[str] = None) -> str:
-        """
-        Universal HTML fetcher:
-        - 429 -> backoff + retry
-        - 403 -> log
-        - raises for non-200
-        """
-        self.logger.info("Fetching URL: %s", url)
-
-        proxies = self._env_proxies()
-        if proxies:
-            self.logger.warning("Using proxies from environment variables")
-
+        # 1. Enforce the time lag
+        self._smart_delay()
+        
+        self.logger.info("Fetching with Impersonation (Chrome 110): %s", url)
+        
         headers = dict(self.headers)
-        if referer is not None:
+        if referer:
             headers["Referer"] = referer
-
-        last_resp: Optional[requests.Response] = None
 
         for attempt in range(self.max_tries_429):
-            resp = self.session.get(url, headers=headers, timeout=self.timeout, proxies=proxies)
-            last_resp = resp
-
-            if resp.status_code == 429:
-                sleep_s = min(
-                    120.0,
-                    (self.base_backoff_s * (2 ** attempt)) + random.uniform(0, 1.5),
-                )
-                self.logger.warning(
-                    "429 Too Many Requests for %s. Sleeping %.1fs (attempt %d/%d)",
-                    url, sleep_s, attempt + 1, self.max_tries_429
-                )
-                time.sleep(sleep_s)
-                continue
-
-            if resp.status_code == 403:
-                self.logger.error(
-                    "403 Forbidden for %s. Likely anti-bot or network/IP blocking. "
-                    "Try slower pacing, caching, different network, or cloudscraper fallback.",
-                    url,
+            try:
+                # 2. Use curl_cffi to bypass the 403 Forbidden
+                resp = cur_requests.get(
+                    url, 
+                    headers=headers, 
+                    timeout=self.timeout, 
+                    impersonate="chrome110", 
+                    proxies=self._env_proxies()
                 )
 
-            resp.raise_for_status()
-            return resp.text
+                if resp.status_code == 429:
+                    sleep_s = min(120.0, (self.base_backoff_s * (2 ** attempt)) + random.uniform(0, 1.5))
+                    self.logger.warning("429 Too Many Requests. Sleeping %.1fs", sleep_s)
+                    time.sleep(sleep_s)
+                    continue
 
-        if last_resp is not None:
-            last_resp.raise_for_status()
+                if resp.status_code == 403:
+                    self.logger.error("403 Forbidden. Possible IP flag or TLS mismatch.")
+                
+                resp.raise_for_status()
+                return resp.text
 
-        raise RuntimeError(f"Failed to fetch URL after {self.max_tries_429} tries: {url}")
+            except Exception as e:
+                if attempt == self.max_tries_429 - 1:
+                    raise e
+                self.logger.warning("Attempt %d failed: %s. Retrying...", attempt + 1, str(e))
+                time.sleep(self.base_backoff_s * (2 ** attempt))
 
-    def fetch_html_with_cloudscraper(self, url: str, referer: Optional[str] = None) -> str:
-        """
-        Optional fallback if normal requests get 403.
-        Requires: pip install cloudscraper
-        """
-        try:
-            import cloudscraper
-        except ImportError as e:
-            raise RuntimeError("cloudscraper is not installed. Install via: pip install cloudscraper") from e
-
-        self.logger.warning("Using cloudscraper fallback for: %s", url)
-
-        proxies = self._env_proxies()
-        headers = dict(self.headers)
-        if referer is not None:
-            headers["Referer"] = referer
-
-        scraper = cloudscraper.create_scraper(
-            browser={"browser": "chrome", "platform": OS_PROFILES[OS_USAGE]["cloudscraper_platform"], "desktop": True}
-        )
-        resp = scraper.get(url, headers=headers, timeout=self.timeout, proxies=proxies)
-        resp.raise_for_status()
-        return resp.text
+        raise RuntimeError(f"Failed to fetch {url} after retries.")
