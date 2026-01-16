@@ -16,8 +16,11 @@ from urllib.parse import quote
 # Local imports
 from classes.scraping import Scraper
 from functions.data_related import numeric_values_adaption 
+from functions.logger import get_logger
 from environment.variable import POSITION_MAP
 
+# Logger 
+logger = get_logger(__name__)
 # Function: Teams in the league
 def teams_in_league(league: str, competition: str, season_id: int) -> pd.DataFrame:
     url = f"https://www.transfermarkt.com/{league}/startseite/wettbewerb/{competition}/saison_id/{season_id}"

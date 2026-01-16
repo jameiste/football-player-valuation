@@ -15,9 +15,11 @@ from bs4 import BeautifulSoup, Comment
 # Local imports
 from functions.data_related import flatten_columns
 from functions.utils import find_country
+from functions.logger import get_logger
 from classes.scraping import Scraper
 
-
+# Logger 
+logger = get_logger(__name__)
 # Function: Scrape the data from fbref
 def scrape_fbref(
     url: str,
