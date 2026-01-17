@@ -20,6 +20,7 @@ OS_PROFILES = {
             "Chrome/122.0.0.0 Safari/537.36"
         ),
         "cloudscraper_platform": "linux",
+        "platform": "Linux",
     },
     "macos": {
         "ua": (
@@ -28,6 +29,7 @@ OS_PROFILES = {
             "Chrome/122.0.0.0 Safari/537.36"
         ),
         "cloudscraper_platform": "darwin",
+        "platform": "macOS",
     },
     "windows": {
         "ua": (
@@ -36,6 +38,8 @@ OS_PROFILES = {
             "Chrome/122.0.0.0 Safari/537.36"
         ),
         "cloudscraper_platform": "windows",
+        "platform": "Windows",
+        
     },
 }
 OS_USAGE = detect_os_profile(OS_OVERRIDE)

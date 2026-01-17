@@ -29,12 +29,22 @@ class Scraper:
         self.min_delay = 3.1 
         
         if headers is None:
+            # Match Chrome 122 across all fields
             self.headers = {
-                "User-Agent": OS_PROFILES[OS_USAGE]["ua"],
+                "User-Agent": OS_PROFILES[OS_USAGE]["ua"], # This is Chrome/122.0.0.0
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
                 "Connection": "keep-alive",
                 "Upgrade-Insecure-Requests": "1",
+                # MUST MATCH Chrome 122 in the User-Agent string
+                "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": OS_PROFILES[OS_USAGE]["platform"],
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "TE": "trailers"
             }
         else:
             self.headers = headers
@@ -59,34 +69,33 @@ class Scraper:
         self.last_request_time = time.time()
 
     def fetch_html(self, url: str, referer: Optional[str] = None) -> str:
-        # 1. Enforce the time lag
+        # Time delay
         self._smart_delay()
         
-        self.logger.info("Fetching with Impersonation (Chrome 110): %s", url)
+        self.logger.info("Fetching: %s", url)
         
         headers = dict(self.headers)
         if referer:
             headers["Referer"] = referer
-
+        # Try to scrape the data
         for attempt in range(self.max_tries_429):
             try:
-                # 2. Use curl_cffi to bypass the 403 Forbidden
                 resp = cur_requests.get(
                     url, 
                     headers=headers, 
                     timeout=self.timeout, 
-                    impersonate="chrome110", 
+                    impersonate="firefox", 
                     proxies=self._env_proxies()
                 )
 
                 if resp.status_code == 429:
                     sleep_s = min(120.0, (self.base_backoff_s * (2 ** attempt)) + random.uniform(0, 1.5))
-                    self.logger.warning("429 Too Many Requests. Sleeping %.1fs", sleep_s)
+                    logger.warning("429 Too Many Requests. Sleeping %.1fs", sleep_s)
                     time.sleep(sleep_s)
                     continue
 
                 if resp.status_code == 403:
-                    self.logger.error("403 Forbidden. Possible IP flag or TLS mismatch.")
+                   logger.error("403 Forbidden. Possible IP flag or TLS mismatch.")
                 
                 resp.raise_for_status()
                 return resp.text
@@ -94,7 +103,7 @@ class Scraper:
             except Exception as e:
                 if attempt == self.max_tries_429 - 1:
                     raise e
-                self.logger.warning("Attempt %d failed: %s. Retrying...", attempt + 1, str(e))
+                ogger.warning("Attempt %d failed: %s. Retrying...", attempt + 1, str(e))
                 time.sleep(self.base_backoff_s * (2 ** attempt))
 
         raise RuntimeError(f"Failed to fetch {url} after retries.")
