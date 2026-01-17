@@ -56,7 +56,7 @@ def player_stats_data(update_sheets: list)->pd.DataFrame:
         for table_page, table_name in fbref_tables.items():
             fbref_url = f'https://fbref.com/en/comps/{league_name["id"]}/{table_name["page"]}/{league_name["name"]}-Stats'
 
-            data = scrape_fbref(url=fbref_url, table_id=table_name["table_id"], use_cloudscraper_fallback=True)
+            data = scrape_fbref(url=fbref_url, table_id=table_name["table_id"])
             data = data.drop(columns=["Rk"]) 
 
             # Add League and Table name

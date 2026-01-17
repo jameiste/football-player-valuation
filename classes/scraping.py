@@ -9,9 +9,9 @@ from curl_cffi import requests as cur_requests
 from functions.logger import get_logger
 from environment.variable import OS_USAGE, OS_PROFILES
 
+logger = get_logger(__name__)
 # Class: Scraping
 class Scraper:
-    logger = get_logger(__name__)
 
     def __init__(
         self,
@@ -72,7 +72,7 @@ class Scraper:
         # Time delay
         self._smart_delay()
         
-        self.logger.info("Fetching: %s", url)
+        logger.info("Fetching: %s", url)
         
         headers = dict(self.headers)
         if referer:
@@ -103,7 +103,7 @@ class Scraper:
             except Exception as e:
                 if attempt == self.max_tries_429 - 1:
                     raise e
-                ogger.warning("Attempt %d failed: %s. Retrying...", attempt + 1, str(e))
+                logger.warning("Attempt %d failed: %s. Retrying...", attempt + 1, str(e))
                 time.sleep(self.base_backoff_s * (2 ** attempt))
 
         raise RuntimeError(f"Failed to fetch {url} after retries.")

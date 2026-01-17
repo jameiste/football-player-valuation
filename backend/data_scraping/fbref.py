@@ -24,13 +24,12 @@ logger = get_logger(__name__)
 def scrape_fbref(
     url: str,
     table_id: str,
-    use_cloudscraper_fallback: bool = False,
 ) -> pd.DataFrame:
-    s = Scraper()
+    scraper = Scraper()
 
     try:
         # Use the 'impersonate' method directly as it handles the 403 and the timing
-        html = s.fetch_html(url, referer="https://fbref.com/")
+        html = scraper.fetch_html(url, referer="https://fbref.com/")
     except Exception as e:
         logger.error(f"Critical failure fetching {url}: {e}")
         raise 
