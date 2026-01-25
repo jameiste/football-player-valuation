@@ -47,8 +47,10 @@ def scrape_fbref(
 
     # Normal  
     t = soup.find("table", id=table_id)
-    if t is not None:
-        return parse_table(str(t))
+    # if t is None:
+    #     soup = BeautifulSoup(scraper.fetch_html_with_fallback(url, referer="https://fbref.com/"), "lxml")
+    # if t is not None:
+    #     return parse_table(str(t))
 
     # Commented tables
     for c in soup.find_all(string=lambda x: isinstance(x, Comment)):

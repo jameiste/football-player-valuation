@@ -8,7 +8,6 @@ No pattern scraping.
 # Imports
 from __future__ import annotations
 import re
-from typing import Optional
 import pandas as pd
 from bs4 import BeautifulSoup
 from urllib.parse import quote

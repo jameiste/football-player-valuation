@@ -6,7 +6,7 @@ from typing import Literal
 from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
-from datetime import datetime, timedelta
+from datetime import timedelta
 from rapidfuzz import process, utils
 
 # Local imports
@@ -153,3 +153,24 @@ def filter_data_set(data: pd.DataFrame, columns: list, filter_entries: list) -> 
     # Check if columns is  a list
     if not isinstance(columns, list):
         columns = list(columns)
+        
+# Function: Compute age by Date
+def age_by_date(date: pd.Timestamp | pd.Series) -> float:
+    # Get the current date
+    current_date = pd.Timestamp.now().normalize()
+    
+    # Ensure it is timestamp
+    if not isinstance(date, (pd.Timestamp, pd.Series)):
+        date = pd.to_datetime(date)
+    
+    # Compute timedelta
+    if isinstance(date, pd.Series):
+        if date.dt.tz is not None:
+            date = date.dt.tz_localize(None)
+        years = (current_date - date).dt.days / 365.25
+    else:
+        if date.tz is not None:
+            date = date.tz_localize(None)
+        years = (current_date - date).days / 365.25
+    
+    return round(years, 1)

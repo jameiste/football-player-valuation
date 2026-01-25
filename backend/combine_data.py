@@ -8,13 +8,55 @@ from typing import Optional
 # Local imports
 from backend.data_scraping.fbref import scrape_fbref
 from backend.data_scraping.transfermarkt import scrape_transfermarkt, teams_in_league
+from backend.data_scraping.sofascore import player_stats_league_sofascore
 from functions.logger import get_logger
 from functions.data_related import mapping_two_columns, add_date_column, normalize_data
-from functions.utils import find_country, load_excel, store_excel, update_sheets
-from environment.variable import STATS_NAME, MARKET_SHEET_NAME, SHEETS, DATA_PATH, POSITION_GROUPS, NON_FEATURES
+from functions.utils import find_country, load_excel, store_excel, update_sheets, age_by_date
+from environment.variable import STATS_NAME, MARKET_SHEET_NAME, POSITION_GROUPS, NON_FEATURES
 
 # Logger
 logger = get_logger(__name__)
+
+# --- --- Sofascore --- ---
+sofascore_leagues = {
+    "Premier-League": {"id": 17, "slug": "premier-league", "country": "england"},
+    "Bundesliga":     {"id": 35, "slug": "bundesliga", "country": "germany"},
+    "La-Liga":        {"id": 8,  "slug": "laliga", "country": "spain"},
+    "Serie-A":        {"id": 23, "slug": "serie-a", "country": "italy"},
+    "Ligue-1":        {"id": 34, "slug": "ligue-1", "country": "france"},
+}
+
+# Function: Run sofascore scraping
+def player_stats_sofascore(update_list : list):
+    tm_data = load_excel(name=STATS_NAME, sheet_name=MARKET_SHEET_NAME)
+    player_stats = pd.DataFrame()
+    league_list = {key: sofascore_leagues[key] for key in sofascore_leagues if key in update_list}
+    for name, info in league_list.items():
+        data = player_stats_league_sofascore(league=name, tournament_id=info["id"])
+        # Add further info to the data
+        data["Date"] = add_date_column(length=data.shape[0])
+        data["Age"] = age_by_date(date = data["Age"])
+        data = mapping_two_columns(initial_data=data, reference_data=tm_data, column="Player", target="Pos")
+        data = mapping_two_columns(initial_data=data, reference_data=tm_data, column="Club", target="League_Position")
+        data = mapping_two_columns(initial_data=data, reference_data=tm_data, column="Club", target="Goal_Diff_%")
+        data = mapping_two_columns(initial_data=data, reference_data=tm_data, column="Club", target="Points_%")
+        data = mapping_two_columns(initial_data=data, reference_data=tm_data, column="Club", target="Market_Value_EUR")
+        data["Pos_group"] =  data["Pos"].map(POSITION_GROUPS)
+        
+        # Normalize data 
+        data["stats.full_games"] = round(data["stats.minutesPlayed"] / 90, 2)
+        features = [column for column in data.columns if column.startswith("stats.")]
+        data = normalize_data(data = data, features=features, foundation_column="stats.full_games")
+        # Concat the leagues
+        if player_stats.empty:
+            player_stats = data
+        else:
+            player_stats = pd.concat([player_stats, data], ignore_index=True)
+
+        # Store the data as excel
+        store_excel(data=data, name=STATS_NAME, sheet_name=name)
+    if "All" in update_list:
+        store_excel(data=player_stats, name=STATS_NAME, sheet_name="All")
 
 # --- --- FBREF --- ---
 # Leagues TODO: Should be scraped as well
@@ -99,6 +141,7 @@ def player_stats_data(update_sheets: list)->pd.DataFrame:
         combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Club", target="League_Position")
         combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Club", target="Goal_Diff_%")
         combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Club", target="Points_%")
+        combined_player_stats = mapping_two_columns(initial_data=combined_player_stats, reference_data=tm_data, column="Club", target="Market_Value_EUR")
         combined_player_stats["Pos_group"] =  combined_player_stats["Pos"].map(POSITION_GROUPS)
         combined_player_stats["Date"] = add_date_column(length=combined_player_stats.shape[0])
 
@@ -173,11 +216,12 @@ def market_values_data() -> pd.DataFrame:
 # Function: Combine all data
 def data_table():
     # Determine updates
-    update_list = update_sheets(offset_date=0)
-    fbref_list = [sheet for sheet in update_list if sheet != MARKET_SHEET_NAME]
+    update_list = update_sheets(offset_date=30)
+    update_list = [sheet for sheet in update_list if sheet != MARKET_SHEET_NAME]
     # Run the scraping
     if MARKET_SHEET_NAME in update_list:
         market_values = market_values_data()
-    if len(fbref_list) > 0:
-        data_stats = player_stats_data(fbref_list)
+    if len(update_list) > 0:
+        data_stats = player_stats_sofascore(update_list=update_list)
+        # data_stats = player_stats_data(fbref_list)
     

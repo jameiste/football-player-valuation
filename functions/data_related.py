@@ -97,9 +97,29 @@ def numeric_values_adaption(value_str: str) -> int | None:
         return num * 1_000
     return num
 
+# Function: From integer to million / thousands
+def numeric_values_string(value: int | pd.Series) -> str | pd.Series:
+    # Case 1: pandas Series
+    if isinstance(value, pd.Series):
+        value = value.astype(int)
+
+        return np.where(
+            value > 1_000_000,
+            (value / 1_000_000).map("{:.1f}M €".format),
+            (value / 1_000).map("{:.1f}k €".format)
+        )
+
+    # Case 2: single numeric value
+    value = int(value)
+
+    if value > 1_000_000:
+        return f"{value / 1_000_000:.1f}M €"
+    return f"{value / 1_000:.1f}k €"
+
 # Function: Map Players to their correct position (based) on transfermarkt
 def mapping_two_columns(initial_data: pd.DataFrame, reference_data: pd.DataFrame, column: str, target: str) -> pd.DataFrame:
     # Set a mapping between the two columns
+    initial_data = initial_data.copy()
     unique_reference = reference_data.drop_duplicates(subset=column)
     # Get rid off weird letters
     # initial_data[column] = initial_data[column].apply(lambda x: "".join(c for c in unicodedata.normalize('NFD', x) if not unicodedata.combining(c)))
@@ -123,14 +143,27 @@ def add_date_column(length: int) -> pd.Series:
     return date_series.repeat(length).reset_index(drop=True)
 
 # Function: Normalize data by various rules
-def normalize_data(data: pd.DataFrame, features: list) -> pd.DataFrame:
+def normalize_data(data: pd.DataFrame, features: list, foundation_column: str) -> pd.DataFrame:
     # Go through all features
+    excluded = (
+        "percentage",
+        "/90",
+        "90s",
+        "%",
+        "rating",
+        "frequency",
+        "conversion",
+        "appearances",
+        "minute",
+        "matches",
+        "clean",
+    )
     for i, feature in enumerate(features):
-        # Check varios cases
-        if ("Per_90" in feature) or ("/90" in feature) or ("90s" in feature) or ("%" in feature) or ("Playing_time" in feature):
+        # Check various cases
+        if any(ex in feature.lower() for ex in excluded):
             continue
         else:
-            data[feature] = data[feature].astype(float) / data['Playing_Time.90s']
+            data[feature] = data[feature].astype(float) / data[foundation_column]
 
     return data
 
@@ -146,7 +179,7 @@ def standardize_data(data: pd.DataFrame, columns_interest: list, grouping: list,
 
     for i, group in enumerate(grouping):
         # Select columns of interest and not more
-        temp_data = data.loc[data[column] == group, NON_FEATURES + columns_interest].copy()
+        temp_data = data.loc[data[column].isin(group if isinstance(group, list) else [group]), NON_FEATURES + columns_interest].copy()
 
         # Standardize all columns
         for col in columns_interest:
@@ -156,6 +189,7 @@ def standardize_data(data: pd.DataFrame, columns_interest: list, grouping: list,
 
         # Rename columns once for this group
         temp_data.rename(columns={col: f"{column}.{col}" for col in columns_interest}, inplace=True)
+        
 
         # Concat group data
         if i == 0:
@@ -166,3 +200,47 @@ def standardize_data(data: pd.DataFrame, columns_interest: list, grouping: list,
     # Reset index
     overall_data.reset_index(drop=True, inplace=True)
     return overall_data
+
+# Function: Standarie further mutrics team and player related
+def context_features(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+
+    # exposure
+    d["ctx.log_minutes"] = np.log1p(pd.to_numeric(d["stats.minutesPlayed"], errors="coerce"))
+    d["ctx.full_games"]  = pd.to_numeric(d["stats.full_games"], errors="coerce")
+
+    # age
+    d["ctx.age"]  = pd.to_numeric(d["Age"], errors="coerce")
+    d["ctx.age2"] = d["ctx.age"] ** 2
+
+    # league/team strength (higher should be better)
+    pos = pd.to_numeric(d["League_Position"], errors="coerce")
+    d["ctx.inv_league_pos"] = 1.0 / pos.replace(0, np.nan)
+
+    for c in ["Points_%", "Goal_Diff_%"]:
+        if c in d.columns:
+            d[f"ctx.{c}"] = pd.to_numeric(d[c], errors="coerce")
+
+    return d
+
+# Function: Make z score for other metrics
+def zscore_within_group(
+    df: pd.DataFrame,
+    cols: list[str],
+    group_cols: list[str],
+    prefix: str = "LeagueCtx",
+) -> pd.DataFrame:
+    out = pd.DataFrame(index=df.index)
+    g = df.groupby(group_cols, observed=True)
+
+    for c in cols:
+        s  = pd.to_numeric(df[c], errors="coerce")
+        mu = g[c].transform(lambda x: pd.to_numeric(x, errors="coerce").mean())
+        sd = g[c].transform(lambda x: pd.to_numeric(x, errors="coerce").std(ddof=0))
+
+        z = (s - mu) / sd
+        z = z.where(sd.notna() & (sd != 0), 0.0)
+
+        out[f"{prefix}.{c}"] = z
+
+    return out
